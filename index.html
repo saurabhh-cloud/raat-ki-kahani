@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Raat Ki Kahani</title>
+<style>
+:root{--bg:#0f1530;--card:#1a2147;--ink:#f1ecff;--muted:#a9a6d0;--accent:#ffcf5c}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,sans-serif;background:linear-gradient(#0f1530,#251a4a);color:var(--ink);min-height:100vh}
+main{max-width:720px;margin:0 auto;padding:20px 16px 60px}
+h1{margin:0 0 4px;color:var(--accent)} .sub{color:var(--muted);margin:0 0 20px}
+.card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:16px}
+label{display:block;font-weight:600;margin:10px 0 4px}
+input,select{width:100%;padding:10px;border:1px solid #3a4280;border-radius:8px;font:inherit;background:#10173a;color:var(--ink)}
+.row{display:flex;gap:10px;flex-wrap:wrap} .row>*{flex:1;min-width:140px}
+button{background:var(--accent);color:#2a1d00;border:0;border-radius:8px;padding:11px 18px;font:inherit;font-weight:700;cursor:pointer;margin:12px 8px 0 0}
+button.sec{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+button:disabled{opacity:.6}
+#story{white-space:pre-wrap;line-height:1.7;font-size:1.1rem}
+#status{color:var(--muted);margin-top:8px}
+details summary{cursor:pointer;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+<h1>🌙 Raat Ki Kahani</h1>
+<p class="sub">A calm bedtime story for your child, made on your own computer. No internet, no account, no cost.</p>
+
+<div class="card">
+  <div class="row">
+    <div><label for="name">Child's name</label><input id="name" placeholder="e.g. Aarav"></div>
+    <div><label for="age">Age</label><select id="age"><option>3-5</option><option selected>6-8</option><option>9-12</option></select></div>
+  </div>
+  <div class="row">
+    <div><label for="topic">Story about</label><input id="topic" placeholder="e.g. a brave little elephant"></div>
+    <div><label for="moral">Lesson</label>
+      <select id="moral"><option>kindness</option><option>honesty</option><option>courage</option><option>sharing</option><option>patience</option></select></div>
+  </div>
+  <div class="row">
+    <div><label for="lang">Language</label><select id="lang"><option>Hindi</option><option>English</option><option>Hinglish</option></select></div>
+    <div><label for="len">Length</label><select id="len"><option value="150">Short</option><option value="300" selected>Medium</option><option value="500">Long</option></select></div>
+  </div>
+  <button id="go">Tell me a story ✨</button>
+  <div id="status"></div>
+</div>
+
+<div class="card" id="outCard" hidden>
+  <div id="story"></div>
+  <button class="sec" id="speak">🔊 Read aloud</button>
+  <button class="sec" id="stop">⏹ Stop</button>
+  <button class="sec" id="copy">Copy</button>
+</div>
+
+<details class="card">
+  <summary>Settings (model &amp; server)</summary>
+  <label for="url">Model server URL (Ollama)</label><input id="url" value="http://localhost:11434">
+  <label for="model">Model name</label><input id="model" value="gemma3:1b">
+  <p class="sub">Runs Google's open-weight Gemma model through Ollama on this computer.</p>
+</details>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+try{const s=JSON.parse(localStorage.getItem('rk')||'{}');if(s.url)$('url').value=s.url;if(s.model)$('model').value=s.model}catch(e){}
+function prompt_(){
+ return `Write a calm, gentle bedtime story in ${$('lang').value} for a child aged ${$('age').value}${$('name').value?` named ${$('name').value}`:''}.
+Topic: ${$('topic').value||'a kind little animal'}. Lesson: ${$('moral').value}.
+Rules: about ${$('len').value} words; simple words; soft, sleepy ending; no scary, violent or sad parts; do not add a title or any notes, output only the story.${$('name').value?` Make ${$('name').value} the hero.`:''}`;
+}
+$('go').onclick=async()=>{
+ try{localStorage.setItem('rk',JSON.stringify({url:$('url').value,model:$('model').value}))}catch(e){}
+ speechSynthesis.cancel();
+ $('go').disabled=true;$('status').textContent='Writing your story… (first run can take a minute)';
+ $('story').textContent='';$('outCard').hidden=false;
+ try{
+  const r=await fetch($('url').value.replace(/\/$/,'')+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({model:$('model').value,stream:true,messages:[{role:'user',content:prompt_()}]})});
+  if(!r.ok)throw new Error('Server said '+r.status);
+  const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+  for(;;){const {done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});
+   let i;while((i=buf.indexOf('\n'))>=0){const line=buf.slice(0,i).trim();buf=buf.slice(i+1);
+    if(line){try{const j=JSON.parse(line);if(j.message)$('story').textContent+=j.message.content}catch(e){}}}}
+  $('status').textContent='Sweet dreams 🌙';
+ }catch(e){
+  $('outCard').hidden=!$('story').textContent;
+  $('status').textContent='Could not reach the model. Is Ollama running? ('+e.message+')';
+ }
+ $('go').disabled=false;
+};
+$('speak').onclick=()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance($('story').textContent);
+ u.lang=$('lang').value==='English'?'en-IN':'hi-IN';u.rate=.85;speechSynthesis.speak(u)};
+$('stop').onclick=()=>speechSynthesis.cancel();
+$('copy').onclick=async()=>{await navigator.clipboard.writeText($('story').textContent);$('copy').textContent='Copied!';setTimeout(()=>$('copy').textContent='Copy',1500)};
+</script>
+</body>
+</html>
